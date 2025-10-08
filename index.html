@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+  <meta charset="UTF-8">
+  <title>Lanchester Duel</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: sans-serif;
+      background: #6b5d45; /* Зеленикаво-кафяв цвят за фон */
+      color: #eee;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    h1 { 
+      margin: 10px; 
+      z-index: 1;
+    }
+    #controls { 
+      margin-bottom: 10px; 
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      z-index: 1;
+    }
+    #setupPanel {
+      background: #2b2b2b;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 800px;
+      z-index: 1;
+    }
+    .player-setup {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin-bottom: 10px;
+    }
+    .advanced-settings {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid #444;
+    }
+    .settings-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    #gameCanvas {
+      border: 2px solid #5a4c3a;
+      background: #846f34; /* По-светъл зеленикаво-кафяв цвят за игралното поле */
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 0;
+    }
+    .info-panel {
+      margin-top: 10px;
+      padding: 10px;
+      background: #2b2b2b;
+      border-radius: 5px;
+      text-align: center;
+      z-index: 1;
+    }
+    label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    input[type="number"] {
+      width: 60px;
+    }
+    .content-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      z-index: 1;
+      position: relative;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="content-wrapper">
+    <h1>Lanchester Duel</h1>
+    
+    <div id="setupPanel">
+      <div style="display: flex; gap: 20px;">
+        <div class="player-setup">
+          <h3>Настройки за играч 1 (сини)</h3>
+          <label>
+            Брой пехота:
+            <input type="number" id="player1Infantry" min="1" max="10" value="12">
+          </label>
+          <label>
+            Брой конница:
+            <input type="number" id="player1Cavalry" min="0" max="10" value="6">
+          </label>
+          <label>
+            Начална стойност:
+            <input type="number" id="player1Value" min="100" max="1000" step="100" value="100">
+          </label>
+        </div>
+        
+        <div class="player-setup">
+          <h3>Настройки за играч 2 (червени)</h3>
+          <label>
+            Брой пехота:
+            <input type="number" id="player2Infantry" min="1" max="10" value="12">
+          </label>
+           <label>
+            Брой конница:
+            <input type="number" id="player2Cavalry" min="0" max="10" value="6">
+          </label>
+          <label>
+            Начална стойност:
+            <input type="number" id="player2Value" min="100" max="1000" step="100" value="100">
+          </label>
+        </div>
+      </div>
+      
+      <div class="advanced-settings">
+        <div class="settings-group">
+          <h3>Допълнителни настройки</h3>
+          <label>
+            Големина на отстъпление (%):
+            <input type="number" id="retreatSize" min="10" max="200" value="100">
+          </label>
+          <label>
+            Бързина на загубите във време:
+            <input type="number" id="damageSpeed" min="100" max="2000" step="100" value="1000">
+          </label>
+        </div>
+        
+        <div class="settings-group">
+          <h3 style="opacity: 0;">Допълнителни настройки</h3>
+          <label>
+            Разстояние между свои:
+            <input type="number" id="friendlyDistance" min="0.1" max="2.0" step="0.1" value="1">
+          </label>
+          <label>
+            Разстояние между вражески:
+            <input type="number" id="enemyDistance" min="0.1" max="2.0" step="0.1" value="1">
+          </label>
+          <label>
+            Максимален обхват за битка:
+            <input type="number" id="battleRange" min="1.0" max="5.0" step="0.1" value="1.5">
+          </label>
+        </div>
+      </div>
+      
+      <button id="startBtn">Започни игра</button>
+    </div>
+    
+    <div id="controls">
+      <button id="readyBtn">Готово</button>
+      <button id="resetBtn">Нова игра</button>
+      <button id="replayBtn">Повторение</button>
+    </div>
+    
+    <div class="info-panel" id="gameInfo">
+      Фаза: Разполагане | Играч 1 (сини) разполага отряди
+    </div>
+  </div>
+
+  <canvas id="gameCanvas" width="1000" height="600"></canvas>
+
+  <script>
+    // Останалата част от JavaScript кода остава непроменена
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const gameInfo = document.getElementById("gameInfo");
+
+    // Константи, които могат да се променят от потребителя
+    let MAX_MOVE = 120;
+    let MIN_FRACTION = 1/20;
+    let UNIT_BASE = 100;
+    let UNIT_SIZE = 30;
+    let MIN_DISTANCE = 50;
+    let BATTLE_SPEED = 0.01;
+    let RETREAT_DAMAGE_FACTOR = 0.3;
+    let ATTACK_ANGLE = Math.PI / 3; // 60 градуса за атакуващ сектор
+    let MERGE_THRESHOLD = 0.5; // Праг за сливане (50% припокриване)
+    let RETREAT_ANGLE_THRESHOLD = Math.PI / 4; // 45 градуса разлика за отстъпление
+    let BASE_STEP = 12; // Базова стъпка за движение при отстъпление
+    
+    // Променливи за настройки
+    let RETREAT_SIZE = 1.0; // Множител за големина на отстъпление
+    let BATTLE_DAMAGE_FACTOR = 500; // Бързина на загубите
+    let FRIENDLY_DISTANCE = 0.6; // Множител за разстояние между свои отряди
+    let ENEMY_DISTANCE = 1.4; // Множител за разстояние между вражески отряди
+    let BATTLE_RANGE = 2.5; // Множител за обхват на битка
+
+    let gamePhase = "setup";
+    let currentPlayer = 1;
+    let units = [];
+    let selectedUnits = [];
+    let isSelecting = false;
+    let isDrawingPath = false;
+    let currentPath = [];
+    let selectionRect = { startX: 0, startY: 0, endX: 0, endY: 0 };
+    
+    let player1Infantry = 3;
+    let player1Cavalry = 0;
+    let player1Value = 100;
+    let player2Infantry = 3;
+    let player2Cavalry = 0;
+    let player2Value = 100;
+
+    let infantryToPlace = 0;
+    let cavalryToPlace = 0;
+    
+    let battleAnimation = null;
+    let battleElapsedTime = 0;
+    let battleEndTimeout = null;
+    let gameHistory = [];
+    let isReplaying = false;
+
+    // Инициализация на UI елементи
+    document.getElementById("startBtn").addEventListener("click", startGame);
+    document.getElementById("readyBtn").addEventListener("click", handleReady);
+    document.getElementById("resetBtn").addEventListener("click", resetGame);
+    document.getElementById("replayBtn").addEventListener("click", playReplay);
+
+    // Функция за преоразмеряване на canvas според размера на екрана
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      draw();
+    }
+
+    // Слушател за преоразмеряване на прозореца
+    window.addEventListener('resize', resizeCanvas, false);
+    resizeCanvas(); // Инициализиране на размера при зареждане
+
+    function startGame() {
+      player1Infantry = parseInt(document.getElementById("player1Infantry").value);
+      player1Cavalry = parseInt(document.getElementById("player1Cavalry").value);
+      player1Value = parseInt(document.getElementById("player1Value").value);
+      player2Infantry = parseInt(document.getElementById("player2Infantry").value);
+      player2Cavalry = parseInt(document.getElementById("player2Cavalry").value);
+      player2Value = parseInt(document.getElementById("player2Value").value);
+      
+      RETREAT_SIZE = parseInt(document.getElementById("retreatSize").value) / 100;
+      BATTLE_DAMAGE_FACTOR = parseInt(document.getElementById("damageSpeed").value);
+      FRIENDLY_DISTANCE = parseFloat(document.getElementById("friendlyDistance").value);
+      ENEMY_DISTANCE = parseFloat(document.getElementById("enemyDistance").value);
+      BATTLE_RANGE = parseFloat(document.getElementById("battleRange").value);
+      
+      gamePhase = "placement";
+      currentPlayer = 1;
+      infantryToPlace = player1Infantry;
+      cavalryToPlace = player1Cavalry;
+      
+      document.getElementById("setupPanel").style.display = "none";
+      updateGameInfo();
+      draw();
+    }
+
+    function resetGame() {
+      gamePhase = "setup";
+      units = [];
+      currentPlayer = 1;
+      selectedUnits = [];
+      if (battleAnimation) {
+        clearInterval(battleAnimation);
+        battleAnimation = null;
+      }
+      if (battleEndTimeout) {
+        clearTimeout(battleEndTimeout);
+        battleEndTimeout = null;
+      }
+      gameHistory = [];
+      document.getElementById("setupPanel").style.display = "flex";
+      updateGameInfo();
+      draw();
+    }
+
+    function handleReady() {
+      if (gamePhase === "placement") {
+        currentPlayer = currentPlayer === 1 ? 2 : 1;
+        
+        if (currentPlayer === 1) {
+          gamePhase = "movementSetup";
+        } else {
+            infantryToPlace = player2Infantry;
+            cavalryToPlace = player2Cavalry;
+        }
+        
+      } else if (gamePhase === "movementSetup") {
+        currentPlayer = currentPlayer === 1 ? 2 : 1;
+        
+        if (currentPlayer === 1) {
+          gameHistory.push(JSON.parse(JSON.stringify(units)));
+          gamePhase = "battle";
+          animateBattle();
+        }
+      } else if (gamePhase === "battle" || gamePhase === "battleEnded") {
+        for (let u of units) { 
+          u.target = null; 
+          u.orderGiven = false; 
+          u.damage = 0;
+          u.retreating = false;
+          delete u.targetValue;
+        }
+        if (battleAnimation) {
+          clearInterval(battleAnimation);
+          battleAnimation = null;
+        }
+        if (battleEndTimeout) {
+          clearTimeout(battleEndTimeout);
+          battleEndTimeout = null;
+        }
+        gamePhase = "movementSetup";
+        currentPlayer = 1;
+      }
+      updateGameInfo();
+      draw();
+    }
+
+    function playReplay() {
+      if (isReplaying || gameHistory.length === 0) {
+        return;
+      }
+      isReplaying = true;
+      document.getElementById("readyBtn").disabled = true;
+      document.getElementById("resetBtn").disabled = true;
+      document.getElementById("replayBtn").disabled = true;
+      gameInfo.textContent = "Повторение...";
+
+      let currentRound = 0;
+
+      function playNextRound() {
+        if (currentRound >= gameHistory.length) {
+          isReplaying = false;
+          document.getElementById("readyBtn").disabled = false;
+          document.getElementById("resetBtn").disabled = false;
+          document.getElementById("replayBtn").disabled = false;
+          units = JSON.parse(JSON.stringify(gameHistory[gameHistory.length - 1]));
+          gamePhase = "battleEnded";
+          updateGameInfo();
+          draw();
+          setTimeout(() => handleReady(), 100); 
+          return;
+        }
+
+        units = JSON.parse(JSON.stringify(gameHistory[currentRound]));
+        
+        let maxDistance = 0;
+        for (let u of units) {
+          if (u.target && typeof u.target.distance === 'number') {
+            if (u.target.distance > maxDistance) maxDistance = u.target.distance;
+          }
+        }
+        if (maxDistance === 0) maxDistance = MAX_MOVE;
+        const battleTime = (maxDistance / (MAX_MOVE * BATTLE_SPEED)) * 40;
+
+        animateBattle();
+
+        setTimeout(() => {
+          currentRound++;
+          playNextRound();
+        }, battleTime + 200);
+      }
+
+      playNextRound();
+    }
+
+    function updateGameInfo() {
+      let infoText = "";
+      
+      switch(gamePhase) {
+        case "setup":
+          infoText = "Настройте играта и натиснете 'Започни игра'";
+          break;
+        case "placement":
+          let unitTypeToPlace = infantryToPlace > 0 ? 'пехота' : 'конница';
+          let unitsLeft = infantryToPlace > 0 ? infantryToPlace : cavalryToPlace;
+          infoText = `Фаза: Разполагане | Играч ${currentPlayer} (${currentPlayer === 1 ? "сини" : "червени"}) | Разполага ${unitTypeToPlace} | Оставащи: ${unitsLeft}`;
+          break;
+        case "movementSetup":
+          infoText = `Фаза: Задаване на движения | Играч ${currentPlayer} (${currentPlayer === 1 ? "сини" : "червени"}) задава посоки`;
+          const playerUnits = units.filter(u => u.player === currentPlayer);
+          const unitsWithOrders = playerUnits.filter(u => u.orderGiven).length;
+          infoText += ` | Зададени команди: ${unitsWithOrders}/${playerUnits.length}`;
+          break;
+        case "battle":
+          infoText = "Фаза: Битка | Изпълнява се битката";
+          const p1Value = units.filter(u => u.player === 1).reduce((sum, u) => sum + u.value, 0);
+          const p2Value = units.filter(u => u.player === 2).reduce((sum, u) => sum + u.value, 0);
+          infoText += ` | Сини: ${Math.round(p1Value)} | Червени: ${Math.round(p2Value)}`;
+          break;
+        case "battleEnded":
+          const p1End = units.filter(u => u.player === 1).reduce((sum, u) => sum + u.value, 0);
+          const p2End = units.filter(u => u.player === 2).reduce((sum, u) => sum + u.value, 0);
+          infoText = `Край на рунда | Сини: ${Math.round(p1End)} | Червени: ${Math.round(p2End)} | Натиснете 'Готово' за следващ рунд`;
+          break;
+      }
+      
+      gameInfo.textContent = infoText;
+    }
+
+    canvas.addEventListener("mousedown", (e) => {
+      const {x, y} = getMouse(e);
+      if (gamePhase === "movementSetup") {
+        const clickedUnit = getUnitAt(x, y);
+        if (selectedUnits.length > 0 && !clickedUnit) {
+          isDrawingPath = true;
+          let sumX = 0, sumY = 0;
+          for (let unit of selectedUnits) {
+            sumX += unit.x;
+            sumY += unit.y;
+          }
+          const originX = sumX / selectedUnits.length;
+          const originY = sumY / selectedUnits.length;
+          currentPath = [{x: originX, y: originY}];
+        } else {
+          isSelecting = true;
+          selectionRect.startX = x;
+          selectionRect.startY = y;
+          selectionRect.endX = x;
+          selectionRect.endY = y;
+        }
+      }
+    });
+
+    canvas.addEventListener("mousemove", (e) => {
+       if (isDrawingPath) {
+        const {x, y} = getMouse(e);
+        let maxMoveForGroup = Math.min(...selectedUnits.map(u => u.maxMove));
+        
+        let totalDist = 0;
+        for (let i = 1; i < currentPath.length; i++) {
+          totalDist += distance(currentPath[i], currentPath[i-1]);
+        }
+        const lastPoint = currentPath[currentPath.length - 1];
+        const newSegmentDist = distance(lastPoint, {x, y});
+
+        if (totalDist + newSegmentDist <= maxMoveForGroup) {
+          currentPath.push({x, y});
+          draw();
+        }
+      } else if (isSelecting) {
+        const {x, y} = getMouse(e);
+        selectionRect.endX = x;
+        selectionRect.endY = y;
+        draw();
+      }
+    });
+
+    canvas.addEventListener("mouseup", (e) => {
+      const {x, y} = getMouse(e);
+      
+      if (gamePhase === "placement") {
+        const inPlayerHalf = (currentPlayer === 1 && x < canvas.width/2) || 
+                            (currentPlayer === 2 && x > canvas.width/2);
+        if (!inPlayerHalf) {
+          alert("Можете да разполагате отряди само във вашата половина на полето!");
+          return;
+        }
+        let tooClose = false;
+        for (const unit of units) {
+            if (distance({x, y}, unit) < FRIENDLY_DISTANCE * getSize(unit)) {
+                tooClose = true;
+                break;
+            }
+        }
+        if (tooClose) {
+          alert(`Отрядите трябва да са на поне ${FRIENDLY_DISTANCE} от ширината си разстояние един от друг!`);
+          return;
+        }
+        
+        const unitValue = currentPlayer === 1 ? player1Value : player2Value;
+        let placed = false;
+        if (infantryToPlace > 0) {
+            addUnit(x, y, currentPlayer, unitValue, 'infantry');
+            infantryToPlace--;
+            placed = true;
+        } else if (cavalryToPlace > 0) {
+            addUnit(x, y, currentPlayer, unitValue, 'cavalry');
+            cavalryToPlace--;
+            placed = true;
+        }
+
+        if (placed && infantryToPlace <= 0 && cavalryToPlace <= 0) {
+          handleReady();
+        }
+      } else if (gamePhase === "movementSetup") {
+        let maxMoveForGroup = selectedUnits.length > 0 ? Math.min(...selectedUnits.map(u => u.maxMove)) : MAX_MOVE;
+
+        if (isDrawingPath) {
+          isDrawingPath = false;
+          const origin = currentPath[0];
+          let totalDistance = 0;
+          for (let i = 1; i < currentPath.length; i++) {
+            totalDistance += distance(currentPath[i-1], currentPath[i]);
+          }
+
+          for (let unit of selectedUnits) {
+            const offsetX = unit.x - origin.x;
+            const offsetY = unit.y - origin.y;
+            const unitPath = currentPath.map(p => ({ x: p.x + offsetX, y: p.y + offsetY }));
+            unit.target = {
+              path: unitPath,
+              totalDistance: totalDistance,
+              progress: 0,
+              x: unitPath[unitPath.length - 1].x,
+              y: unitPath[unitPath.length - 1].y,
+              angle: Math.atan2(unitPath[unitPath.length - 1].y - unitPath[unitPath.length - 2].y, unitPath[unitPath.length - 1].x - unitPath[unitPath.length - 2].x) || unit.angle,
+              distance: totalDistance
+            };
+            unit.orderGiven = true;
+          }
+          selectedUnits = [];
+          currentPath = [];
+
+        } else if (isSelecting) {
+          isSelecting = false;
+          const isClick = Math.abs(selectionRect.startX - x) < 5 && Math.abs(selectionRect.startY - y) < 5;
+
+          if (isClick) {
+            const clickedUnit = getUnitAt(x, y);
+            if (clickedUnit && clickedUnit.player === currentPlayer) {
+              if (e.shiftKey) {
+                const index = selectedUnits.indexOf(clickedUnit);
+                if (index > -1) selectedUnits.splice(index, 1);
+                else selectedUnits.push(clickedUnit);
+              } else {
+                selectedUnits = [clickedUnit];
+              }
+            } else if (selectedUnits.length > 0) {
+              let sumX = 0, sumY = 0;
+              for (let unit of selectedUnits) {
+                  sumX += unit.x;
+                  sumY += unit.y;
+              }
+              const originX = sumX / selectedUnits.length;
+              const originY = sumY / selectedUnits.length;
+
+              for (let selectedUnit of selectedUnits) {
+                const dx = x - originX;
+                const dy = y - originY;
+                const dist = Math.sqrt(dx*dx+dy*dy);
+                const scale = dist > maxMoveForGroup ? maxMoveForGroup/dist : 1;
+                selectedUnit.target = {
+                  x: selectedUnit.x + dx*scale,
+                  y: selectedUnit.y + dy*scale,
+                  dx: dx*scale,
+                  dy: dy*scale,
+                  angle: Math.atan2(dy, dx),
+                  distance: Math.min(dist, maxMoveForGroup),
+                  progress: 0
+                };
+                selectedUnit.orderGiven = true;
+              }
+              selectedUnits = [];
+            } else {
+              selectedUnits = [];
+            }
+          } else {
+            const rect = { x: Math.min(selectionRect.startX, x), y: Math.min(selectionRect.startY, y), width: Math.abs(selectionRect.startX - x), height: Math.abs(selectionRect.startY - y) };
+            const newlySelected = units.filter(u => u.player === currentPlayer && u.x > rect.x && u.x < rect.x + rect.width && u.y > rect.y && u.y < rect.y + rect.height);
+            if (e.shiftKey) {
+              for (const unit of newlySelected) {
+                if (!selectedUnits.includes(unit)) selectedUnits.push(unit);
+              }
+            } else {
+              selectedUnits = newlySelected;
+            }
+          }
+        }
+      }
+      
+      updateGameInfo();
+      draw();
+    });
+
+    function getMouse(e) {
+      const rect = canvas.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+
+    function addUnit(x, y, player, value, type) {
+      const isCavalry = type === 'cavalry';
+      units.push({
+        x, y, player, value, type,
+        initialValue: value,
+        speedMultiplier: isCavalry ? 2 : 1,
+        effectivenessMultiplier: isCavalry ? 2 : 1,
+        maxMove: isCavalry ? MAX_MOVE * 2 : MAX_MOVE,
+        target: null, 
+        orderGiven: false, 
+        alive: true,
+        damage: 0,
+        retreating: false,
+        angle: player === 1 ? Math.PI/2 : -Math.PI/2, // Визуален ъгъл
+        movementAngle: player === 1 ? Math.PI/2 : -Math.PI/2 // Ъгъл на движение
+      });
+    }
+
+    function getUnitAt(x, y) {
+      return units.find(u =>
+        x > u.x - getSize(u)/2 && x < u.x + getSize(u)/2 &&
+        y > u.y - getSize(u)/2 && y < u.y + getSize(u)/2
+      );
+    }
+
+    function getSize(u) { return UNIT_SIZE; }
+    function distance(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+    function animateBattle() {
+      if (battleAnimation) clearInterval(battleAnimation);
+      if (battleEndTimeout) clearTimeout(battleEndTimeout);
+
+      battleElapsedTime = 0;
+      let maxDistance = 0;
+      for (let u of units) {
+        if (u.target && typeof u.target.distance === 'number') {
+          if (u.target.distance > maxDistance) maxDistance = u.target.distance;
+        }
+      }
+      if (maxDistance === 0) maxDistance = MAX_MOVE;
+      const battleTime = (maxDistance / (MAX_MOVE * BATTLE_SPEED)) * 40;
+      const battleStartTime = Date.now();
+      let frameCounter = 0; // Брояч за тиковете на анимацията
+
+      battleEndTimeout = setTimeout(() => {
+        if (battleAnimation) clearInterval(battleAnimation);
+        battleAnimation = null;
+        gamePhase = "battleEnded";
+        updateGameInfo();
+        draw(true);
+      }, battleTime);
+
+      battleAnimation = setInterval(() => {
+        frameCounter++; // Увеличаваме брояча при всеки тик
+        battleElapsedTime = Date.now() - battleStartTime;
+        if (battleElapsedTime >= battleTime) {
+          clearInterval(battleAnimation);
+          battleAnimation = null;
+          return;
+        }
+
+        // 1. Движение на отрядите с проверки на малки интервали
+        for (let u of units) {
+          if (u.target && u.target.progress < 1) {
+            const moveIncrement = 0.01 * u.speedMultiplier;
+            let finalMoveAngle;
+            let targetTickX, targetTickY; // Къде иска да бъде единицата в края на този тик
+
+            // Определяне на целевата позиция за този игрови тик
+            if (u.retreating && u.retreatTarget) {
+                finalMoveAngle = u.retreatTarget.angle;
+                targetTickX = u.x + u.retreatTarget.dx * moveIncrement;
+                targetTickY = u.y + u.retreatTarget.dy * moveIncrement;
+            } else if (u.target.path && u.target.path.length > 1) {
+                const newProgress = Math.min(u.target.progress + moveIncrement, 1);
+                const traveledSoFar = u.target.progress * u.target.totalDistance;
+                let distanceAlongPath = 0;
+                let segmentStart = u.target.path[0];
+                let segmentEnd = u.target.path[1];
+                for (let i = 1; i < u.target.path.length; i++) {
+                    const currentSegmentLength = distance(u.target.path[i-1], u.target.path[i]);
+                    if (traveledSoFar < distanceAlongPath + currentSegmentLength) {
+                        segmentStart = u.target.path[i-1];
+                        segmentEnd = u.target.path[i];
+                        break;
+                    }
+                    distanceAlongPath += currentSegmentLength;
+                }
+                const segmentAngle = Math.atan2(segmentEnd.y - segmentStart.y, segmentEnd.x - segmentStart.x);
+                const distanceToMoveThisTick = (newProgress * u.target.totalDistance) - traveledSoFar;
+                targetTickX = u.x + Math.cos(segmentAngle) * distanceToMoveThisTick;
+                targetTickY = u.y + Math.sin(segmentAngle) * distanceToMoveThisTick;
+                finalMoveAngle = segmentAngle;
+            } else {
+                finalMoveAngle = u.target.angle;
+                targetTickX = u.x + u.target.dx * moveIncrement;
+                targetTickY = u.y + u.target.dy * moveIncrement;
+            }
+
+            // Разделяне на движението на по-малки стъпки за по-добра проверка на сблъсъци
+            const numSubSteps = 5; // Проверка за сблъсъци 5 пъти в рамките на движението за този тик
+            const subStepDX = (targetTickX - u.x) / numSubSteps;
+            const subStepDY = (targetTickY - u.y) / numSubSteps;
+            let movedSubSteps = 0;
+
+            for (let i = 0; i < numSubSteps; i++) {
+                const nextSubStepX = u.x + subStepDX;
+                const nextSubStepY = u.y + subStepDY;
+                
+                let hasObstacle = false;
+                for (let other of units) {
+                    if (other !== u) {
+                        let minDist = (u.player === other.player) ? FRIENDLY_DISTANCE * getSize(u) : ENEMY_DISTANCE * getSize(u);
+                        if (distance({x: nextSubStepX, y: nextSubStepY}, other) < minDist) {
+                            hasObstacle = true;
+                            
+                            if ((u.retreating || (!u.target || u.target.progress >= 1)) && u.player === other.player) {
+                                applyRetreatPush(u, other);
+                            }
+                            // START: НОВА ЛОГИКА ЗА ПОДКРЕПА
+                            // Проверка дали отряд извън битка е блокиран от по-малък приятелски отряд в битка
+                            else if (u.player === other.player &&      // Дали е приятелски отряд?
+                                     other.damage > 0 &&               // Дали приятелският отряд понася щети (в битка е)?
+                                     u.damage === 0 &&                 // Дали нашият движещ се отряд НЕ понася щети?
+                                     u.value > other.value) {          // Дали нашият движещ се отряд е по-голям?
+                                
+                                // Изчисляване на размера на прехвърлянето
+                                const transferAmount = other.damage / 2; // Прехвърляне с темпо, равно на половината от щетите на другия отряд
+                                
+                                // Уверяваме се, че прехвърлящият отряд има достатъчно стойност
+                                if (u.value > transferAmount) {
+                                    u.value -= transferAmount;
+                                    other.value += transferAmount;
+                                }
+                            }
+                            // END: НОВА ЛОГИКА ЗА ПОДКРЕПА
+
+                            break; // Прекъсване на цикъла за 'other'
+                        }
+                    }
+                }
+
+                if (!hasObstacle) {
+                    u.x = nextSubStepX;
+                    u.y = nextSubStepY;
+                    movedSubSteps++;
+                } else {
+                    break; // Прекъсване на цикъла за малките стъпки
+                }
+            }
+            
+            // Актуализиране на прогреса и ъгъла въз основа на реално изминатото разстояние
+            if (movedSubSteps > 0) {
+                u.target.progress += moveIncrement * (movedSubSteps / numSubSteps);
+                u.movementAngle = finalMoveAngle;
+            }
+
+            if (u.retreating && u.target.progress >= 1 && u.retreatTarget) {
+              u.retreating = false;
+              u.target = u.originalTarget;
+              u.retreatTarget = null;
+              u.orderGiven = true;
+            }
+          }
+        }
+        
+        // НОВ БЛОК: Периодично актуализиране на визуалния ъгъл
+        const ANGLE_UPDATE_INTERVAL = 5; // Актуализиране на ъгъла на всеки 5 тика
+        if (frameCounter % ANGLE_UPDATE_INTERVAL === 0) {
+            for (let u of units) {
+                u.angle = u.movementAngle;
+            }
+        }
+
+        mergeOverlaps();
+        executeBattleStep();
+        draw(true);
+      }, 40);
+    }
+
+    function executeBattleStep() {
+      for (let u of units) { 
+        u.damage = 0; 
+        u.attackingValue = 0;
+      }
+      
+      for (let u of units) {
+        const enemies = units.filter(v => v.player !== u.player && distance(u, v) < getSize(u) * BATTLE_RANGE);
+        if (enemies.length > 0) {
+          let inSector = [], outOfSector = [];
+          for (let e of enemies) {
+            let angToEnemy = Math.atan2(e.y - u.y, e.x - u.x);
+            let angleDiff = u.target ? Math.abs(normalizeAngle(angToEnemy - u.target.angle)) : Math.PI;
+            if (angleDiff <= ATTACK_ANGLE / 2) inSector.push(e);
+            else outOfSector.push(e);
+          }
+          const totalInSectorValue = inSector.reduce((sum, e) => sum + e.value, 0);
+          const totalOutOfSectorValue = outOfSector.reduce((sum, e) => sum + e.value, 0);
+          const unitEffectiveness = u.value * u.effectivenessMultiplier;
+          if (inSector.length > 0) {
+            const attackPower = unitEffectiveness * 0.9;
+            for (let e of inSector) e.attackingValue += attackPower * (e.value / totalInSectorValue);
+          }
+          if (outOfSector.length > 0) {
+            const attackPower = unitEffectiveness * 0.1;
+            for (let e of outOfSector) e.attackingValue += attackPower * (e.value / totalOutOfSectorValue);
+          }
+        }
+      }
+      
+      // START: МОДИФИЦИРАН БЛОК
+      for (let u of units) {
+        // Първо, прилагаме щети, ако има такива
+        if (u.attackingValue > 0) {
+          u.damage = u.attackingValue / BATTLE_DAMAGE_FACTOR;
+          u.value = Math.max(u.value - u.damage, 0);
+        }
+
+        // Второ, проверяваме за промяна в състоянието на отстъпление
+        // Започване на отстъпление
+        if (u.attackingValue > u.value && !u.retreating) {
+          u.retreating = true;
+          if (!u.originalTarget && u.target) u.originalTarget = Object.assign({}, u.target);
+          let retreatVector = {x: 0, y: 0};
+          const attackers = units.filter(v => v.player !== u.player && distance(u, v) < getSize(u) * BATTLE_RANGE);
+          for (let a of attackers) {
+            let dx = u.x - a.x, dy = u.y - a.y;
+            let dist = Math.hypot(dx, dy) || 1;
+            retreatVector.x += (dx / dist) * a.value;
+            retreatVector.y += (dy / dist) * a.value;
+          }
+          let retreatAngle = Math.atan2(retreatVector.y, retreatVector.x);
+          const retreatDistance = BASE_STEP * Math.min(u.attackingValue / (u.value || 1), 4) * RETREAT_SIZE;
+          
+          u.retreatTarget = {
+              x: u.x + Math.cos(retreatAngle) * retreatDistance,
+              y: u.y + Math.sin(retreatAngle) * retreatDistance,
+              dx: Math.cos(retreatAngle) * retreatDistance,
+              dy: Math.sin(retreatAngle) * retreatDistance,
+              angle: retreatAngle,
+              distance: retreatDistance,
+              progress: 0
+          };
+          u.target = u.retreatTarget;
+          u.orderGiven = true;
+        } 
+        // Спиране на отстъпление
+        else if (u.retreating && u.attackingValue <= u.value) {
+          u.retreating = false;
+          u.target = u.originalTarget; // Връщане към оригиналната цел
+          u.originalTarget = null;    // Изчистване
+          u.retreatTarget = null;     // Изчистване
+        }
+      }
+      // END: МОДИФИЦИРАН БЛОК
+      
+      for (let u of units) {
+        if (u.retreating) {
+          const attackers = units.filter(v => v.player !== u.player && distance(u, v) < getSize(u) * BATTLE_RANGE);
+          const damageToAttackers = (u.value * u.effectivenessMultiplier) / BATTLE_DAMAGE_FACTOR;
+          if (attackers.length > 0) {
+            const damagePerAttacker = damageToAttackers / attackers.length;
+            for (let a of attackers) a.value = Math.max(a.value - damagePerAttacker, 0);
+          }
+        }
+      }
+      
+      for (let u of units) {
+        if (u.retreating) {
+          for (let other of units) {
+            if (other !== u && other.player === u.player && distance(u, other) < FRIENDLY_DISTANCE * getSize(u)) {
+              applyRetreatPush(u, other);
+            }
+          }
+        }
+      }
+      
+      removeWeak();
+    }
+
+    function applyRetreatPush(retreatingUnit, pushedUnit) {
+      // START: МОДИФИКАЦИЯ
+      // Проверяваме условията за прехвърляне на стойност
+      if (pushedUnit.attackingValue <= pushedUnit.value && // Избутаният отряд не е в губеща битка
+          retreatingUnit.value < pushedUnit.value &&      // Отстъпващият е по-малоброен
+          retreatingUnit.damage > 0) {                    // Отстъпващият понася щети
+
+        const transferAmount = retreatingUnit.damage / 2;
+        
+        // Прехвърляме стойност, само ако избутаният отряд има достатъчно
+        if (pushedUnit.value > transferAmount) {
+          pushedUnit.value -= transferAmount;
+          retreatingUnit.value += transferAmount;
+        }
+      }
+      // END: МОДИФИКАЦИЯ
+
+      let pushAngle = retreatingUnit.target ? retreatingUnit.target.angle : retreatingUnit.movementAngle;
+      const pushDistance = BASE_STEP * Math.min(0.7 * (retreatingUnit.value / pushedUnit.value), 1) * RETREAT_SIZE;
+      
+      if (pushedUnit.target && pushedUnit.target.progress < 1) {
+        if (Math.abs(normalizeAngle(pushAngle - pushedUnit.target.angle)) > Math.PI / 2) {
+          pushedUnit.target = {
+            x: pushedUnit.x + Math.cos(pushAngle) * pushDistance,
+            y: pushedUnit.y + Math.sin(pushAngle) * pushDistance,
+            dx: Math.cos(pushAngle) * pushDistance,
+            dy: Math.sin(pushAngle) * pushDistance,
+            angle: pushAngle, distance: pushDistance, progress: 0
+          };
+          if (retreatingUnit.retreating) {
+            pushedUnit.retreating = true;
+            if (!pushedUnit.originalTarget) pushedUnit.originalTarget = Object.assign({}, pushedUnit.target);
+          }
+          pushedUnit.orderGiven = true;
+        }
+      } else {
+        pushedUnit.target = {
+          x: pushedUnit.x + Math.cos(pushAngle) * pushDistance,
+          y: pushedUnit.y + Math.sin(pushAngle) * pushDistance,
+          dx: Math.cos(pushAngle) * pushDistance,
+          dy: Math.sin(pushAngle) * pushDistance,
+          angle: pushAngle, distance: pushDistance, progress: 0
+        };
+        if (retreatingUnit.retreating) {
+          pushedUnit.retreating = true;
+          if (!pushedUnit.originalTarget && pushedUnit.target) pushedUnit.originalTarget = Object.assign({}, pushedUnit.target);
+        }
+        pushedUnit.orderGiven = true;
+      }
+    }
+
+    function normalizeAngle(a) {
+      while (a > Math.PI) a -= 2 * Math.PI;
+      while (a < -Math.PI) a += 2 * Math.PI;
+      return a;
+    }
+
+    function removeWeak() {
+      units = units.filter(u => u.value >= u.initialValue * 0.33);
+    }
+
+    function mergeOverlaps() {
+      for (let i = 0; i < units.length; i++) {
+        for (let j = i + 1; j < units.length; j++) {
+          let a = units[i], b = units[j];
+          if (a.player === b.player && distance(a, b) < FRIENDLY_DISTANCE * getSize(a) * MERGE_THRESHOLD) {
+              a.value += b.value;
+              a.initialValue += b.initialValue;
+              if (b.target && !a.target) {
+                a.target = b.target;
+                a.orderGiven = true;
+              }
+              // При сливане, ако единият е конница, новият отряд става конница
+              if (b.type === 'cavalry') {
+                a.type = 'cavalry';
+                a.speedMultiplier = 2;
+                a.effectivenessMultiplier = 2;
+                a.maxMove = MAX_MOVE * 2;
+              }
+              units.splice(j, 1);
+              j--;
+            
+          }
+        }
+      }
+    }
+
+    function draw(hideArrows = false) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = "#444";
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(canvas.width / 2, 0);
+      ctx.lineTo(canvas.width / 2, canvas.height);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      
+      for (let u of units) {
+        if (gamePhase === "placement" && u.player !== currentPlayer) continue;
+        
+        ctx.fillStyle = u.player === 1 ? "blue" : "red";
+        if (u.retreating) ctx.fillStyle = u.player === 1 ? "#4444ff" : "#ff4444";
+        
+        const size = getSize(u);
+        ctx.save();
+        ctx.translate(u.x, u.y);
+        ctx.rotate(u.angle + Math.PI / 2);
+        ctx.fillRect(-size / 2, -size / 2, size, size);
+
+        if (u.type === 'cavalry') {
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.moveTo(-size / 2, -size / 2); // top-left
+            ctx.lineTo(size / 2, -size / 2);  // top-right
+            ctx.lineTo(size / 2, size / 2);   // bottom-right
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        ctx.restore();
+        
+        ctx.fillStyle = "white";
+        ctx.font = `${Math.max(10, Math.min(20, 10 + u.value / 20))}px Arial`;
+        ctx.textAlign = "center";
+        ctx.fillText(Math.round(u.value), u.x, u.y + 5);
+        
+        if (u.target && !hideArrows && (gamePhase === "movementSetup" || gamePhase === "battle") && u.player === currentPlayer) {
+          ctx.strokeStyle = u.retreating ? "orange" : "yellow";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          if (u.target.path) {
+            const origin = u.target.path[0];
+            const offsetX = u.x - origin.x;
+            const offsetY = u.y - origin.y;
+            ctx.moveTo(u.x, u.y);
+            for (let i = 1; i < u.target.path.length; i++) {
+              ctx.lineTo(u.target.path[i].x + offsetX, u.target.path[i].y + offsetY);
+            }
+          } else {
+            ctx.moveTo(u.x, u.y);
+            ctx.lineTo(u.target.x, u.target.y);
+          }
+          ctx.stroke();
+          
+          const arrowSize = 10;
+          ctx.save();
+          ctx.translate(u.target.x, u.target.y);
+          ctx.rotate(u.target.angle);
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(-arrowSize, -arrowSize / 2);
+          ctx.lineTo(-arrowSize, arrowSize / 2);
+          ctx.closePath();
+          ctx.fillStyle = u.retreating ? "orange" : "yellow";
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+      
+      if (selectedUnits.length > 0) {
+        ctx.strokeStyle = "cyan";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 3]);
+        for (let selectedUnit of selectedUnits) {
+          ctx.beginPath();
+          ctx.arc(selectedUnit.x, selectedUnit.y, getSize(selectedUnit) / 2 + 5, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+      }
+
+      if (isSelecting) {
+        ctx.strokeStyle = 'cyan';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.strokeRect(selectionRect.startX, selectionRect.startY, selectionRect.endX - selectionRect.startX, selectionRect.endY - selectionRect.startY);
+        ctx.setLineDash([]);
+      }
+
+      if (isDrawingPath && currentPath.length > 1) {
+        ctx.strokeStyle = 'yellow';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 3]);
+        ctx.beginPath();
+        ctx.moveTo(currentPath[0].x, currentPath[0].y);
+        for (let i = 1; i < currentPath.length; i++) {
+          ctx.lineTo(currentPath[i].x, currentPath[i].y);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    draw();
+  </script> 
+</body>
+</html>
