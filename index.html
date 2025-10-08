@@ -700,56 +700,104 @@
             const subStepDY = (targetTickY - u.y) / numSubSteps;
             let movedSubSteps = 0;
 
+            // START: МОДИФИЦИРАНА ЛОГИКА ЗА ДВИЖЕНИЕ И СБЛЪСЪЦИ
             for (let i = 0; i < numSubSteps; i++) {
                 const nextSubStepX = u.x + subStepDX;
                 const nextSubStepY = u.y + subStepDY;
-                
-                let hasObstacle = false;
+
+                let isBlocked = false;
+                let blockingUnit = null;
+
+                // Първо, проверяваме за сблъсък с планираното движение
                 for (let other of units) {
                     if (other !== u) {
                         let minDist = (u.player === other.player) ? FRIENDLY_DISTANCE * getSize(u) : ENEMY_DISTANCE * getSize(u);
-                        if (distance({x: nextSubStepX, y: nextSubStepY}, other) < minDist) {
-                            hasObstacle = true;
-                            
-                            if ((u.retreating || (!u.target || u.target.progress >= 1)) && u.player === other.player) {
-                                applyRetreatPush(u, other);
-                            }
-                            // START: НОВА ЛОГИКА ЗА ПОДКРЕПА
-                            // Проверка дали отряд извън битка е блокиран от по-малък приятелски отряд в битка
-                            else if (u.player === other.player &&      // Дали е приятелски отряд?
-                                     other.damage > 0 &&               // Дали приятелският отряд понася щети (в битка е)?
-                                     u.damage === 0 &&                 // Дали нашият движещ се отряд НЕ понася щети?
-                                     u.value > other.value) {          // Дали нашият движещ се отряд е по-голям?
-                                
-                                // Изчисляване на размера на прехвърлянето
-                                const transferAmount = other.damage / 2; // Прехвърляне с темпо, равно на половината от щетите на другия отряд
-                                
-                                // Уверяваме се, че прехвърлящият отряд има достатъчно стойност
-                                if (u.value > transferAmount) {
-                                    u.value -= transferAmount;
-                                    other.value += transferAmount;
-                                }
-                            }
-                            // END: НОВА ЛОГИКА ЗА ПОДКРЕПА
-
-                            break; // Прекъсване на цикъла за 'other'
+                        if (distance({ x: nextSubStepX, y: nextSubStepY }, other) < minDist) {
+                            isBlocked = true;
+                            blockingUnit = other;
+                            break;
                         }
                     }
                 }
 
-                if (!hasObstacle) {
+                let movedThisSubStep = false;
+                if (isBlocked) {
+                    // Блокирано е. Можем ли да разрешим проблема чрез усредняване на векторите с приятелски отряд?
+                    const other = blockingUnit;
+                    if (u.player === other.player && u.target && u.target.progress < 1 && other.target && other.target.progress < 1) {
+                        
+                        // Логика за усредняване на векторите
+                        const u_angle = u.movementAngle;
+                        const u_vec = { x: Math.cos(u_angle), y: Math.sin(u_angle) };
+
+                        const other_angle = other.movementAngle;
+                        const other_vec = { x: Math.cos(other_angle), y: Math.sin(other_angle) };
+
+                        const totalValue = u.value + other.value;
+                        const avg_vec_x = (u_vec.x * u.value + other_vec.x * other.value) / totalValue;
+                        const avg_vec_y = (u_vec.y * u.value + other_vec.y * other.value) / totalValue;
+                        const avg_angle = Math.atan2(avg_vec_y, avg_vec_x);
+
+                        const magnitude = Math.hypot(subStepDX, subStepDY);
+                        const new_dx = Math.cos(avg_angle) * magnitude;
+                        const new_dy = Math.sin(avg_angle) * magnitude;
+                        
+                        const new_nextSubStepX = u.x + new_dx;
+                        const new_nextSubStepY = u.y + new_dy;
+
+                        // Повторна проверка за сблъсък по новия път
+                        let newPathIsBlocked = false;
+                        for (let another of units) {
+                            if (another !== u) {
+                                let minDist = (u.player === another.player) ? FRIENDLY_DISTANCE * getSize(u) : ENEMY_DISTANCE * getSize(u);
+                                if (distance({ x: new_nextSubStepX, y: new_nextSubStepY }, another) < minDist) {
+                                    newPathIsBlocked = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!newPathIsBlocked) {
+                            u.x = new_nextSubStepX;
+                            u.y = new_nextSubStepY;
+                            u.movementAngle = avg_angle; 
+                            movedSubSteps++;
+                            movedThisSubStep = true;
+                        }
+                    }
+
+                    // Старата логика за избутване при отстъпление / подкрепа, ако не сме се преместили
+                    if (!movedThisSubStep && u.player === blockingUnit.player) {
+                        if (u.retreating || (!u.target || u.target.progress >= 1)) {
+                            applyRetreatPush(u, blockingUnit);
+                        } else if (blockingUnit.damage > 0 && u.damage === 0 && u.value > blockingUnit.value) {
+                            const transferAmount = blockingUnit.damage / 2;
+                            if (u.value > transferAmount) {
+                                u.value -= transferAmount;
+                                blockingUnit.value += transferAmount;
+                            }
+                        }
+                    }
+
+                } else { // Не е блокирано, движим се нормално
                     u.x = nextSubStepX;
                     u.y = nextSubStepY;
                     movedSubSteps++;
-                } else {
-                    break; // Прекъсване на цикъла за малките стъпки
+                    movedThisSubStep = true;
+                }
+
+                if (!movedThisSubStep) {
+                    break; // Ако не сме успели да се преместим в тази под-стъпка, спираме да опитваме.
                 }
             }
+            // END: МОДИФИЦИРАНА ЛОГИКА
             
             // Актуализиране на прогреса и ъгъла въз основа на реално изминатото разстояние
             if (movedSubSteps > 0) {
                 u.target.progress += moveIncrement * (movedSubSteps / numSubSteps);
-                u.movementAngle = finalMoveAngle;
+                if (movedSubSteps === numSubSteps) { // Актуализираме ъгъла към целта, само ако сме направили пълно движение
+                    u.movementAngle = finalMoveAngle;
+                }
             }
 
             if (u.retreating && u.target.progress >= 1 && u.retreatTarget) {
