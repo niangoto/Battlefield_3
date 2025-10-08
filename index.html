@@ -795,9 +795,12 @@
             // Актуализиране на прогреса и ъгъла въз основа на реално изминатото разстояние
             if (movedSubSteps > 0) {
                 u.target.progress += moveIncrement * (movedSubSteps / numSubSteps);
-                if (movedSubSteps === numSubSteps) { // Актуализираме ъгъла към целта, само ако сме направили пълно движение
-                    u.movementAngle = finalMoveAngle;
-                }
+                // START: MODIFICATION
+                // Винаги актуализираме ъгъла на движение към крайната цел за този тик.
+                // Това позволява на отряда да се "коригира" в следващия тик, ако е бил отклонен,
+                // за да избегне друг отряд, и да продължи по първоначално зададения маршрут.
+                u.movementAngle = finalMoveAngle;
+                // END: MODIFICATION
             }
 
             if (u.retreating && u.target.progress >= 1 && u.retreatTarget) {
